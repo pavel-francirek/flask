@@ -5,7 +5,7 @@
 
     Implements the logging support for Flask.
 
-    :copyright: (c) 2014 by Armin Ronacher.
+    :copyright: (c) 2015 by Armin Ronacher.
     :license: BSD, see LICENSE for more details.
 """
 
@@ -57,10 +57,10 @@ def create_logger(app):
     Logger = getLoggerClass()
 
     class DebugLogger(Logger):
-        def getEffectiveLevel(x):
-            if x.level == 0 and app.debug:
+        def getEffectiveLevel(self):
+            if self.level == 0 and app.debug:
                 return DEBUG
-            return Logger.getEffectiveLevel(x)
+            return Logger.getEffectiveLevel(self)
 
     class DebugHandler(StreamHandler):
         def emit(self, record):
@@ -87,4 +87,8 @@ def create_logger(app):
     logger.__class__ = DebugLogger
     logger.addHandler(debug_handler)
     logger.addHandler(prod_handler)
+
+    # Disable propagation by default
+    logger.propagate = False
+
     return logger

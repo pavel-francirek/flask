@@ -5,7 +5,7 @@
 
     Template functionality
 
-    :copyright: (c) 2014 by Armin Ronacher.
+    :copyright: (c) 2015 by Armin Ronacher.
     :license: BSD, see LICENSE for more details.
 """
 
@@ -81,10 +81,29 @@ def test_escaping():
     ]
 
 def test_no_escaping():
+    text = '<p>Hello World!'
+    app = flask.Flask(__name__)
+    @app.route('/')
+    def index():
+        return flask.render_template('non_escaping_template.txt', text=text,
+                                     html=flask.Markup(text))
+    lines = app.test_client().get('/').data.splitlines()
+    assert lines == [
+        b'<p>Hello World!',
+        b'<p>Hello World!',
+        b'<p>Hello World!',
+        b'<p>Hello World!',
+        b'&lt;p&gt;Hello World!',
+        b'<p>Hello World!',
+        b'<p>Hello World!',
+        b'<p>Hello World!'
+    ]
+
+def test_escaping_without_template_filename():
     app = flask.Flask(__name__)
     with app.test_request_context():
         assert flask.render_template_string(
-            '{{ foo }}', foo='<test>') == '<test>'
+            '{{ foo }}', foo='<test>') == '&lt;test&gt;'
         assert flask.render_template('mail.txt', foo='<test>') == \
             '<test> Mail'
 
@@ -361,3 +380,13 @@ def test_template_loader_debugging(test_apps):
             app.config['EXPLAIN_TEMPLATE_LOADING'] = old_load_setting
 
     assert len(called) == 1
+
+def test_custom_jinja_env():
+    class CustomEnvironment(flask.templating.Environment):
+        pass
+
+    class CustomFlask(flask.Flask):
+        jinja_environment = CustomEnvironment
+
+    app = CustomFlask(__name__)
+    assert isinstance(app.jinja_env, CustomEnvironment)

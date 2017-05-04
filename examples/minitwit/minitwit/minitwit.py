@@ -5,7 +5,7 @@
 
     A microblogging application written with Flask and sqlite3.
 
-    :copyright: (c) 2014 by Armin Ronacher.
+    :copyright: (c) 2015 by Armin Ronacher.
     :license: BSD, see LICENSE for more details.
 """
 
@@ -85,7 +85,7 @@ def format_datetime(timestamp):
 
 def gravatar_url(email, size=80):
     """Return the gravatar image for the given email address."""
-    return 'http://www.gravatar.com/avatar/%s?d=identicon&s=%d' % \
+    return 'https://www.gravatar.com/avatar/%s?d=identicon&s=%d' % \
         (md5(email.strip().lower().encode('utf-8')).hexdigest(), size)
 
 

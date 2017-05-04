@@ -5,7 +5,7 @@
 
     Tests regressions.
 
-    :copyright: (c) 2014 by Armin Ronacher.
+    :copyright: (c) 2015 by Armin Ronacher.
     :license: BSD, see LICENSE for more details.
 """
 
@@ -39,8 +39,7 @@ class assert_no_leak(object):
         self.old_objects = len(gc.get_objects())
 
     def __exit__(self, exc_type, exc_value, tb):
-        if not hasattr(sys, 'getrefcount'):
-            gc.collect()
+        gc.collect()
         new_objects = len(gc.get_objects())
         if new_objects > self.old_objects:
             pytest.fail('Example code leaked')
@@ -48,10 +47,6 @@ class assert_no_leak(object):
         gc.enable()
 
 
-# XXX: untitaker: These tests need to be revised. They broke around the time we
-# ported Flask to Python 3.
-@pytest.mark.skipif(os.environ.get('RUN_FLASK_MEMORY_TESTS') != '1',
-                    reason='Turned off due to envvar.')
 def test_memory_consumption():
     app = flask.Flask(__name__)
 

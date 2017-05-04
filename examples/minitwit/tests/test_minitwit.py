@@ -5,13 +5,13 @@
 
     Tests the MiniTwit application.
 
-    :copyright: (c) 2014 by Armin Ronacher.
+    :copyright: (c) 2015 by Armin Ronacher.
     :license: BSD, see LICENSE for more details.
 """
 import os
-import minitwit
 import tempfile
 import pytest
+from minitwit import minitwit
 
 
 @pytest.fixture

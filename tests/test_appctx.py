@@ -5,7 +5,7 @@
 
     Tests the application context.
 
-    :copyright: (c) 2014 by Armin Ronacher.
+    :copyright: (c) 2015 by Armin Ronacher.
     :license: BSD, see LICENSE for more details.
 """
 
@@ -78,6 +78,43 @@ def test_app_tearing_down_with_previous_exception():
 
     assert cleanup_stuff == [None]
 
+def test_app_tearing_down_with_handled_exception():
+    cleanup_stuff = []
+    app = flask.Flask(__name__)
+    @app.teardown_appcontext
+    def cleanup(exception):
+        cleanup_stuff.append(exception)
+
+    with app.app_context():
+        try:
+            raise Exception('dummy')
+        except Exception:
+            pass
+
+    assert cleanup_stuff == [None]
+
+def test_app_ctx_globals_methods():
+    app = flask.Flask(__name__)
+    with app.app_context():
+        # get
+        assert flask.g.get('foo') is None
+        assert flask.g.get('foo', 'bar') == 'bar'
+        # __contains__
+        assert 'foo' not in flask.g
+        flask.g.foo = 'bar'
+        assert 'foo' in flask.g
+        # setdefault
+        flask.g.setdefault('bar', 'the cake is a lie')
+        flask.g.setdefault('bar', 'hello world')
+        assert flask.g.bar == 'the cake is a lie'
+        # pop
+        assert flask.g.pop('bar') == 'the cake is a lie'
+        with pytest.raises(KeyError):
+            flask.g.pop('bar')
+        assert flask.g.pop('bar', 'more cake') == 'more cake'
+        # __iter__
+        assert list(flask.g) == ['foo']
+
 def test_custom_app_ctx_globals_class():
     class CustomRequestGlobals(object):
         def __init__(self):
@@ -109,3 +146,25 @@ def test_context_refcounts():
     assert res.status_code == 200
     assert res.data == b''
     assert called == ['request', 'app']
+
+
+def test_clean_pop():
+    called = []
+    app = flask.Flask(__name__)
+
+    @app.teardown_request
+    def teardown_req(error=None):
+        1 / 0
+
+    @app.teardown_appcontext
+    def teardown_app(error=None):
+        called.append('TEARDOWN')
+
+    try:
+        with app.test_request_context():
+            called.append(flask.current_app.name)
+    except ZeroDivisionError:
+        pass
+
+    assert called == ['test_appctx', 'TEARDOWN']
+    assert not flask.current_app

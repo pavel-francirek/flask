@@ -5,7 +5,7 @@
 
     Implements the WSGI wrappers (request and response).
 
-    :copyright: (c) 2014 by Armin Ronacher.
+    :copyright: (c) 2015 by Armin Ronacher.
     :license: BSD, see LICENSE for more details.
 """
 
@@ -14,7 +14,6 @@ from werkzeug.exceptions import BadRequest
 
 from . import json
 from .globals import _request_ctx_stack
-
 
 _missing = object()
 
@@ -124,11 +123,12 @@ class Request(RequestBase):
         return False
 
     def get_json(self, force=False, silent=False, cache=True):
-        """Parses the incoming JSON request data and returns it.  If
-        parsing fails the :meth:`on_json_loading_failed` method on the
-        request object will be invoked.  By default this function will
-        only load the json data if the mimetype is :mimetype:`application/json`
-        but this can be overridden by the `force` parameter.
+        """Parses the incoming JSON request data and returns it.  By default
+        this function will return ``None`` if the mimetype is not
+        :mimetype:`application/json` but this can be overridden by the
+        ``force`` parameter. If parsing fails the
+        :meth:`on_json_loading_failed` method on the request object will be
+        invoked.
 
         :param force: if set to ``True`` the mimetype is ignored.
         :param silent: if set to ``True`` this method will fail silently
@@ -137,7 +137,8 @@ class Request(RequestBase):
                       on the request.
         """
         rv = getattr(self, '_cached_json', _missing)
-        if rv is not _missing:
+        # We return cached JSON only when the cache is enabled.
+        if cache and rv is not _missing:
             return rv
 
         if not (force or self.is_json):
@@ -175,6 +176,9 @@ class Request(RequestBase):
 
         .. versionadded:: 0.8
         """
+        ctx = _request_ctx_stack.top
+        if ctx is not None and ctx.app.config.get('DEBUG', False):
+            raise BadRequest('Failed to decode JSON object: {0}'.format(e))
         raise BadRequest()
 
     def _load_form_data(self):

@@ -5,13 +5,14 @@
 
     Tests the request context.
 
-    :copyright: (c) 2014 by Armin Ronacher.
+    :copyright: (c) 2015 by Armin Ronacher.
     :license: BSD, see LICENSE for more details.
 """
 
 import pytest
 
 import flask
+from flask.sessions import SessionInterface
 
 try:
     from greenlet import greenlet
@@ -46,6 +47,21 @@ def test_teardown_with_previous_exception():
 
     with app.test_request_context():
         assert buffer == []
+    assert buffer == [None]
+
+def test_teardown_with_handled_exception():
+    buffer = []
+    app = flask.Flask(__name__)
+    @app.teardown_request
+    def end_of_request(exception):
+        buffer.append(exception)
+
+    with app.test_request_context():
+        assert buffer == []
+        try:
+            raise Exception('dummy')
+        except Exception:
+            pass
     assert buffer == [None]
 
 def test_proper_test_request_context():
@@ -125,12 +141,8 @@ def test_manual_context_binding():
     ctx.push()
     assert index() == 'Hello World!'
     ctx.pop()
-    try:
+    with pytest.raises(RuntimeError):
         index()
-    except RuntimeError:
-        pass
-    else:
-        assert 0, 'expected runtime error'
 
 @pytest.mark.skipif(greenlet is None, reason='greenlet not installed')
 def test_greenlet_context_copying():
@@ -182,3 +194,27 @@ def test_greenlet_context_copying_api():
 
     result = greenlets[0].run()
     assert result == 42
+
+
+def test_session_error_pops_context():
+    class SessionError(Exception):
+        pass
+
+    class FailingSessionInterface(SessionInterface):
+        def open_session(self, app, request):
+            raise SessionError()
+
+    class CustomFlask(flask.Flask):
+        session_interface = FailingSessionInterface()
+
+    app = CustomFlask(__name__)
+
+    @app.route('/')
+    def index():
+        # shouldn't get here
+        assert False
+
+    response = app.test_client().get('/')
+    assert response.status_code == 500
+    assert not flask.request
+    assert not flask.current_app

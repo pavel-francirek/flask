@@ -5,11 +5,9 @@
 
     Implements the objects required to keep the context.
 
-    :copyright: (c) 2014 by Armin Ronacher.
+    :copyright: (c) 2015 by Armin Ronacher.
     :license: BSD, see LICENSE for more details.
 """
-
-from __future__ import with_statement
 
 import sys
 from functools import update_wrapper
@@ -21,11 +19,24 @@ from .signals import appcontext_pushed, appcontext_popped
 from ._compat import BROKEN_PYPY_CTXMGR_EXIT, reraise
 
 
+# a singleton sentinel value for parameter defaults
+_sentinel = object()
+
+
 class _AppCtxGlobals(object):
     """A plain object."""
 
     def get(self, name, default=None):
         return self.__dict__.get(name, default)
+
+    def pop(self, name, default=_sentinel):
+        if default is _sentinel:
+            return self.__dict__.pop(name)
+        else:
+            return self.__dict__.pop(name, default)
+
+    def setdefault(self, name, default=None):
+        return self.__dict__.setdefault(name, default)
 
     def __contains__(self, item):
         return item in self.__dict__
@@ -168,14 +179,16 @@ class AppContext(object):
         _app_ctx_stack.push(self)
         appcontext_pushed.send(self.app)
 
-    def pop(self, exc=None):
+    def pop(self, exc=_sentinel):
         """Pops the app context."""
-        self._refcnt -= 1
-        if self._refcnt <= 0:
-            if exc is None:
-                exc = sys.exc_info()[1]
-            self.app.do_teardown_appcontext(exc)
-        rv = _app_ctx_stack.pop()
+        try:
+            self._refcnt -= 1
+            if self._refcnt <= 0:
+                if exc is _sentinel:
+                    exc = sys.exc_info()[1]
+                self.app.do_teardown_appcontext(exc)
+        finally:
+            rv = _app_ctx_stack.pop()
         assert rv is self, 'Popped wrong app context.  (%r instead of %r)' \
             % (rv, self)
         appcontext_popped.send(self.app)
@@ -320,7 +333,7 @@ class RequestContext(object):
         if self.session is None:
             self.session = self.app.make_null_session()
 
-    def pop(self, exc=None):
+    def pop(self, exc=_sentinel):
         """Pops the request context and unbinds it by doing that.  This will
         also trigger the execution of functions registered by the
         :meth:`~flask.Flask.teardown_request` decorator.
@@ -330,38 +343,40 @@ class RequestContext(object):
         """
         app_ctx = self._implicit_app_ctx_stack.pop()
 
-        clear_request = False
-        if not self._implicit_app_ctx_stack:
-            self.preserved = False
-            self._preserved_exc = None
-            if exc is None:
-                exc = sys.exc_info()[1]
-            self.app.do_teardown_request(exc)
+        try:
+            clear_request = False
+            if not self._implicit_app_ctx_stack:
+                self.preserved = False
+                self._preserved_exc = None
+                if exc is _sentinel:
+                    exc = sys.exc_info()[1]
+                self.app.do_teardown_request(exc)
 
-            # If this interpreter supports clearing the exception information
-            # we do that now.  This will only go into effect on Python 2.x,
-            # on 3.x it disappears automatically at the end of the exception
-            # stack.
-            if hasattr(sys, 'exc_clear'):
-                sys.exc_clear()
+                # If this interpreter supports clearing the exception information
+                # we do that now.  This will only go into effect on Python 2.x,
+                # on 3.x it disappears automatically at the end of the exception
+                # stack.
+                if hasattr(sys, 'exc_clear'):
+                    sys.exc_clear()
 
-            request_close = getattr(self.request, 'close', None)
-            if request_close is not None:
-                request_close()
-            clear_request = True
+                request_close = getattr(self.request, 'close', None)
+                if request_close is not None:
+                    request_close()
+                clear_request = True
+        finally:
+            rv = _request_ctx_stack.pop()
 
-        rv = _request_ctx_stack.pop()
-        assert rv is self, 'Popped wrong request context.  (%r instead of %r)' \
-            % (rv, self)
+            # get rid of circular dependencies at the end of the request
+            # so that we don't require the GC to be active.
+            if clear_request:
+                rv.request.environ['werkzeug.request'] = None
 
-        # get rid of circular dependencies at the end of the request
-        # so that we don't require the GC to be active.
-        if clear_request:
-            rv.request.environ['werkzeug.request'] = None
+            # Get rid of the app as well if necessary.
+            if app_ctx is not None:
+                app_ctx.pop(exc)
 
-        # Get rid of the app as well if necessary.
-        if app_ctx is not None:
-            app_ctx.pop(exc)
+            assert rv is self, 'Popped wrong request context.  ' \
+                '(%r instead of %r)' % (rv, self)
 
     def auto_pop(self, exc):
         if self.request.environ.get('flask._preserve_context') or \
